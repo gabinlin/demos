@@ -1,7 +1,6 @@
-import org.apache.zookeeper.CreateMode;
-import org.apache.zookeeper.KeeperException;
-import org.apache.zookeeper.ZooDefs;
-import org.apache.zookeeper.ZooKeeper;
+import lombok.SneakyThrows;
+import org.apache.zookeeper.*;
+import org.apache.zookeeper.data.Stat;
 import org.assertj.core.util.Maps;
 import org.junit.Before;
 import org.junit.Test;
@@ -21,7 +20,7 @@ public class ZKTest {
     }
 
     @Test
-    public void test() throws KeeperException, InterruptedException {
+    public void testCRUD() throws KeeperException, InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
         // 增
         String path = "/gabin";
@@ -45,6 +44,55 @@ public class ZKTest {
             }
         }, content);
         latch.await();
+    }
+
+    @Test
+    public void testCloudConfig() throws InterruptedException {
+        MyWatcher watcher = new MyWatcher(zooKeeper);
+        zooKeeper.exists("/conf", watcher, watcher, "ABC");
+        watcher.aWait();
+    }
+
+    class MyWatcher implements Watcher, AsyncCallback.StatCallback {
+        private ZooKeeper zooKeeper;
+        private CountDownLatch countDownLatch = new CountDownLatch(1);
+
+        public MyWatcher(ZooKeeper zooKeeper) {
+            this.zooKeeper = zooKeeper;
+        }
+
+        @SneakyThrows
+        @Override
+        public void processResult(int rc, String path, Object ctx, Stat stat) {
+            byte[] data = zooKeeper.getData(path, false, stat);
+            System.out.println(new String(data));
+        }
+
+        public void aWait() throws InterruptedException {
+            countDownLatch.await();
+        }
+
+        @SneakyThrows
+        @Override
+        public void process(WatchedEvent event) {
+            countDownLatch.countDown();
+            String path = event.getPath();
+            switch (event.getType()) {
+                case None:
+                    break;
+                case NodeCreated:
+                    System.out.println("data create:" + new String(zooKeeper.getData(path, false, new Stat())));
+                    break;
+                case NodeDeleted:
+                    System.out.println("data delete:" + path);
+                    break;
+                case NodeDataChanged:
+                    System.out.println("data change:" + new String(zooKeeper.getData(path, false, new Stat())));
+                    break;
+                case NodeChildrenChanged:
+                    break;
+            }
+        }
     }
 
 }
